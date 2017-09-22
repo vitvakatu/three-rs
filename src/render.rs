@@ -28,7 +28,7 @@ use text::Font;
 use texture::Texture;
 
 /// The format of the back buffer color requested from the windowing system.
-pub type ColorFormat = gfx::format::Srgba8;
+pub type ColorFormat = gfx::format::Rgba8;
 /// The format of the depth stencil buffer requested from the windowing system.
 pub type DepthFormat = gfx::format::DepthStencil;
 pub type ShadowFormat = gfx::format::Depth32F;
@@ -305,6 +305,7 @@ pub struct DebugQuadHandle(froggy::Pointer<DebugQuad>);
 /// See [Window::render](struct.Window.html#method.render).
 pub struct Renderer {
     device: back::Device,
+    factory: back::Factory,
     encoder: gfx::Encoder<back::Resources, back::CommandBuffer>,
     const_buf: gfx::handle::Buffer<back::Resources, Globals>,
     quad_buf: gfx::handle::Buffer<back::Resources, QuadParams>,
@@ -312,6 +313,8 @@ pub struct Renderer {
     pbr_buf: gfx::handle::Buffer<back::Resources, PbrParams>,
     out_color: gfx::handle::RenderTargetView<back::Resources, ColorFormat>,
     out_depth: gfx::handle::DepthStencilView<back::Resources, DepthFormat>,
+    blit_rtv: gfx::handle::RenderTargetView<back::Resources, gfx::format::Rgba8>,
+    blit_srv: gfx::handle::ShaderResourceView<back::Resources, [f32; 4]>,
     pso_line_basic: BasicPipelineState,
     pso_mesh_basic_fill: BasicPipelineState,
     pso_mesh_basic_wireframe: BasicPipelineState,
@@ -372,8 +375,15 @@ impl Renderer {
             border: t::PackedColor(!0), // clamp to 1.0
             ..t::SamplerInfo::new(t::FilterMethod::Bilinear, t::WrapMode::Border)
         });
+        let window_size = color.get_dimensions();
+        println!("Size: {:?}", &window_size);
+        println!("Size: {:?}", window.get_inner_size_pixels().unwrap());
+        let (_, blit_srv, blit_rtv) = gl_factory
+            .create_render_target(window_size.0, window_size.1)
+            .unwrap();
         let renderer = Renderer {
             device: device,
+            factory: gl_factory.clone(),
             encoder: gl_factory.create_command_buffer().into(),
             const_buf: gl_factory.create_constant_buffer(1),
             quad_buf: gl_factory.create_constant_buffer(1),
@@ -381,6 +391,8 @@ impl Renderer {
             pbr_buf: gl_factory.create_constant_buffer(1),
             out_color: color,
             out_depth: depth,
+            blit_srv,
+            blit_rtv,
             pso_line_basic: gl_factory
                 .create_pipeline_from_program(
                     &prog_basic,
@@ -490,6 +502,12 @@ impl Renderer {
 
         self.size = size;
         gfx_window_glutin::update_views(window, &mut self.out_color, &mut self.out_depth);
+        let target_size = self.out_color.get_dimensions();
+        println!("SizeChange: {:?}", &target_size);
+        println!("SizeChange: {:?}", &size);
+        let (_, srv, rtv) = self.factory.create_render_target(target_size.0, target_size.1).unwrap();
+        self.blit_srv = srv;
+        self.blit_rtv = rtv;
     }
 
     /// Returns current viewport aspect, i.e. width / height.
@@ -517,6 +535,7 @@ impl Renderer {
         scene: &Scene,
         camera: &Camera,
     ) {
+        println!("Render");
         self.device.cleanup();
         let mut hub = scene.hub.lock().unwrap();
         hub.process_messages();
@@ -541,6 +560,7 @@ impl Renderer {
                 }
             }
         }
+        println!("Gather lights");
 
         // gather lights
         struct ShadowRequest {
@@ -613,7 +633,7 @@ impl Renderer {
                 });
             }
         }
-
+        println!("Shadow maps");
         // render shadow maps
         for request in &shadow_requests {
             self.encoder.clear_depth(&request.target, 1.0);
@@ -682,13 +702,15 @@ impl Renderer {
             .update_buffer(&self.light_buf, &lights, 0)
             .unwrap();
 
+        println!("Clear");
         self.encoder.clear_depth(&self.out_depth, 1.0);
         self.encoder.clear_stencil(&self.out_depth, 0);
 
         if let Background::Color(color) = scene.background {
-            self.encoder.clear(&self.out_color, decode_color(color));
+            self.encoder.clear(&self.blit_rtv, decode_color(color));
         }
 
+        println!("Render everything");
         // render everything
         let (shadow_default, shadow_sampler) = self.shadow_default.to_param();
         let shadow0 = match shadow_requests.get(0) {
@@ -790,12 +812,13 @@ impl Renderer {
                                 .unwrap_or(&self.map_default)
                                 .to_param()
                         },
-                        color_target: self.out_color.clone(),
+                        color_target: self.blit_rtv.clone(),
                         depth_target: self.out_depth.clone(),
                     };
                     self.encoder.draw(&gpu_data.slice, &self.pso_pbr, &data);
                 }
                 ref other => {
+                    println!("Other: {:?} {:?}", self.out_color.get_dimensions(), self.blit_rtv.get_dimensions());
                     let (pso, color, param0, map) = match *other {
                         Material::MeshPbr { .. } => unreachable!(),
                         Material::LineBasic { color } => (&self.pso_line_basic, color, 0.0, None),
@@ -845,7 +868,7 @@ impl Renderer {
                         tex_map: map.unwrap_or(&self.map_default).to_param(),
                         shadow_map0: (shadow0.clone(), shadow_sampler.clone()),
                         shadow_map1: (shadow1.clone(), shadow_sampler.clone()),
-                        out_color: self.out_color.clone(),
+                        out_color: self.blit_rtv.clone(),
                         out_depth: (self.out_depth.clone(), (0, 0)),
                     };
                     self.encoder.draw(&gpu_data.slice, pso, &data);
@@ -860,7 +883,7 @@ impl Renderer {
             instances: None,
             buffer: gfx::IndexBuffer::Auto,
         };
-
+        println!("Background");
         // draw background (if any)
         match scene.background {
             Background::Texture(ref texture) => {
@@ -877,7 +900,7 @@ impl Renderer {
                     globals: self.const_buf.clone(),
                     resource: texture.to_param().0.raw().clone(),
                     sampler: texture.to_param().1,
-                    target: self.out_color.clone(),
+                    target: self.blit_rtv.clone(),
                     depth_target: self.out_depth.clone(),
                 };
                 self.encoder.draw(&quad_slice, &self.pso_quad, &data);
@@ -895,7 +918,7 @@ impl Renderer {
                     resource: cubemap.to_param().0.raw().clone(),
                     sampler: cubemap.to_param().1,
                     globals: self.const_buf.clone(),
-                    target: self.out_color.clone(),
+                    target: self.blit_rtv.clone(),
                     depth_target: self.out_depth.clone(),
                 };
                 self.encoder.draw(&quad_slice, &self.pso_skybox, &data);
@@ -903,6 +926,7 @@ impl Renderer {
             Background::Color(_) => {}
         }
 
+        println!("UI");
         // draw ui text
         for node in hub.nodes.iter() {
             if let SubNode::UiText(ref text) = node.sub_node {
@@ -917,6 +941,7 @@ impl Renderer {
             font.draw(&mut self.encoder, &self.out_color);
         }
 
+        println!("Quads");
         // draw debug quads
         self.debug_quads.sync_pending();
         for quad in self.debug_quads.iter() {
@@ -949,12 +974,32 @@ impl Renderer {
                 globals: self.const_buf.clone(),
                 resource: quad.resource.clone(),
                 sampler: self.map_default.to_param().1,
-                target: self.out_color.clone(),
+                target: self.blit_rtv.clone(),
                 depth_target: self.out_depth.clone(),
             };
             self.encoder.draw(&quad_slice, &self.pso_quad, &data);
         }
 
+        println!("Blit");
+
+        // blit back buffer to screen
+        self.encoder.update_constant_buffer(
+            &self.quad_buf,
+            &QuadParams {
+                rect: [-1.0, -1.0, 1.0, 1.0],
+                depth: 1.0,
+            },
+        );
+        let data = quad_pipe::Data {
+            params: self.quad_buf.clone(),
+            resource: self.blit_srv.raw().clone(),
+            sampler: self.map_default.to_param().1,
+            globals: self.const_buf.clone(),
+            target: self.out_color.clone(),
+            depth_target: self.out_depth.clone(),
+        };
+        self.encoder.draw(&quad_slice, &self.pso_skybox, &data);
+        println!("Flush");
         self.encoder.flush(&mut self.device);
     }
 
