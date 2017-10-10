@@ -132,7 +132,7 @@ fn main() {
     win.scene.add(&cubes[0].group);
 
     let timer = win.input.time();
-    while win.update() && !three::KEY_ESCAPE.is_hit(&win.input) {
+    while win.update() && win.input.button(three::KEY_ESCAPE).released {
         let time = timer.get(&win.input);
         for cube in cubes.iter_mut() {
             let level = &levels[cube.level_id];

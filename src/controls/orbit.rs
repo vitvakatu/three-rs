@@ -119,7 +119,7 @@ impl Orbit {
         &mut self,
         input: &Input,
     ) {
-        if !self.button.is_hit(input) && input.mouse_wheel().abs() < 1e-6 {
+        if input.button(self.button).released && input.mouse_wheel().abs() < 1e-6 {
             return;
         }
 

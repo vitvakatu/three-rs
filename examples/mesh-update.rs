@@ -1,6 +1,6 @@
 extern crate cgmath;
-extern crate three;
 extern crate mint;
+extern crate three;
 
 use cgmath::prelude::*;
 use std::f32::consts::PI;
@@ -59,7 +59,7 @@ fn main() {
 
     let mut timer = win.input.time();
     let mut vi = 0;
-    while win.update() && !three::KEY_ESCAPE.is_hit(&win.input) {
+    while win.update() && win.input.button(three::KEY_ESCAPE).released {
         let elapsed_time = timer.get(&win.input);
         if elapsed_time > 1.0 {
             // Reset the timer.

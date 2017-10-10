@@ -296,7 +296,7 @@ mod util;
 pub mod window;
 
 pub use controls::{AXIS_DOWN_UP, AXIS_LEFT_RIGHT, KEY_ESCAPE, KEY_SPACE, MOUSE_LEFT, MOUSE_RIGHT};
-pub use controls::{Button, Input, KeyAxis, Timer};
+pub use controls::{axis, Button, Input, Timer};
 pub use factory::{Factory, Gltf};
 pub use geometry::Geometry;
 #[cfg(feature = "opengl")]
