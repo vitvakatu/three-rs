@@ -103,18 +103,17 @@ fn create_cubes(
 
 const COLORS: [three::Color; 6] = [0xffff80, 0x8080ff, 0x80ff80, 0xff8080, 0x80ffff, 0xff80ff];
 
-const SPEEDS: [f32; 5] = [
+const SPEEDS: [f32; 6] = [
     0.7,
     -1.0,
     1.3,
     -1.6,
     1.9,
-    //-2.2, //TODO when performance allows
+    -2.2,
 ];
 
 fn main() {
-    let mut win = three::Window::new("Three-rs group example");
-    win.scene.background = three::Background::Color(0x204060);
+    let mut win = three::Window::new("Three-rs group example");    win.scene.background = three::Background::Color(0x204060);
 
     let mut cam = win.factory.perspective_camera(60.0, 1.0 .. 100.0);
     cam.look_at([-1.8, -8.0, 7.0], [0.0, 0.0, 3.5], None);

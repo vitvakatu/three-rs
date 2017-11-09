@@ -33,6 +33,7 @@ use material::Material;
 use scene::{Background, Scene};
 use text::Font;
 use texture::Texture;
+use node::NodePointer;
 
 /// The format of the back buffer color requested from the windowing system.
 pub type ColorFormat = gfx::format::Rgba8;
@@ -94,9 +95,11 @@ gfx_defines! {
         tangent: [gfx::format::I8Norm; 4] = "a_Tangent",
     }
 
-    constant Locals {
-        mx_world: [[f32; 4]; 4] = "u_World",
-        color: [f32; 4] = "u_Color",
+    vertex Instance {
+        world0: [f32; 4] = "a_World0",
+        world1: [f32; 4] = "a_World1",
+        world2: [f32; 4] = "a_World2",
+        color: [f32; 4] = "a_Color",
         mat_params: [f32; 4] = "u_MatParams",
         uv_range: [f32; 4] = "u_UvRange",
     }
@@ -121,7 +124,7 @@ gfx_defines! {
 
     pipeline basic_pipe {
         vbuf: gfx::VertexBuffer<Vertex> = (),
-        cb_locals: gfx::ConstantBuffer<Locals> = "b_Locals",
+        inst_buf: gfx::InstanceBuffer<Instance> = (),
         cb_lights: gfx::ConstantBuffer<LightParam> = "b_Lights",
         cb_globals: gfx::ConstantBuffer<Globals> = "b_Globals",
         tex_map: gfx::TextureSampler<[f32; 4]> = "t_Map",
@@ -137,7 +140,7 @@ gfx_defines! {
 
     pipeline shadow_pipe {
         vbuf: gfx::VertexBuffer<Vertex> = (),
-        cb_locals: gfx::ConstantBuffer<Locals> = "b_Locals",
+        inst_buf: gfx::InstanceBuffer<Instance> = (),
         cb_globals: gfx::ConstantBuffer<Globals> = "b_Globals",
         target: gfx::DepthTarget<ShadowFormat> =
             gfx::preset::depth::LESS_EQUAL_WRITE,
@@ -172,8 +175,8 @@ gfx_defines! {
 
     pipeline pbr_pipe {
         vbuf: gfx::VertexBuffer<Vertex> = (),
+        inst_buf: gfx::InstanceBuffer<Instance> = (),
 
-        locals: gfx::ConstantBuffer<Locals> = "b_Locals",
         globals: gfx::ConstantBuffer<Globals> = "b_Globals",
         params: gfx::ConstantBuffer<PbrParams> = "b_PbrParams",
         lights: gfx::ConstantBuffer<LightParam> = "b_Lights",
@@ -198,7 +201,7 @@ gfx_defines! {
 pub(crate) struct GpuData {
     pub slice: gfx::Slice<back::Resources>,
     pub vertices: gfx::handle::Buffer<back::Resources, Vertex>,
-    pub constants: gfx::handle::Buffer<back::Resources, Locals>,
+    pub instances: gfx::handle::Buffer<back::Resources, Instance>,
     pub pending: Option<DynamicData>,
 }
 
@@ -403,6 +406,7 @@ pub struct Renderer {
     debug_quads: froggy::Storage<DebugQuad>,
     size: (u32, u32),
     font_cache: HashMap<PathBuf, Font>,
+    instances_cache: HashMap<NodePointer, (gfx::handle::Buffer<back::Resources, Instance>, Vec<Matrix4<f32>>)>,
     /// `ShadowType` of this `Renderer`.
     pub shadow: ShadowType,
 }
@@ -447,6 +451,7 @@ impl Renderer {
             pso,
             map_default: Texture::new(srv_white, sampler, [1, 1]),
             shadow_default: Texture::new(srv_shadow, sampler_shadow, [1, 1]),
+            instances_cache: HashMap::new(),
             shadow: ShadowType::Basic,
             debug_quads: froggy::Storage::new(),
             font_cache: HashMap::new(),
