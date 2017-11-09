@@ -235,7 +235,14 @@ impl Factory {
         material: M,
     ) -> Mesh {
         let vertices = Self::mesh_vertices(&geometry.base_shape);
-        let cbuf = self.backend.create_constant_buffer(1);
+        let instances = self.backend
+            .create_buffer(
+                1,
+                gfx::buffer::Role::Vertex,
+                gfx::memory::Usage::Data,
+                gfx::TRANSFER_DST,
+            )
+            .unwrap();
         let (vbuf, slice) = if geometry.faces.is_empty() {
             self.backend.create_vertex_buffer_with_slice(&vertices, ())
         } else {
@@ -249,7 +256,7 @@ impl Factory {
                 GpuData {
                     slice,
                     vertices: vbuf,
-                    constants: cbuf,
+                    instances,
                     pending: None,
                 },
             ),
@@ -288,7 +295,14 @@ impl Factory {
             }
             (data.len(), dest_buf, upload_buf)
         };
-        let constants = self.backend.create_constant_buffer(1);
+        let instances = self.backend
+            .create_buffer(
+                1,
+                gfx::buffer::Role::Vertex,
+                gfx::memory::Usage::Data,
+                gfx::TRANSFER_DST,
+            )
+            .unwrap();
 
         DynamicMesh {
             object: self.hub.lock().unwrap().spawn_visual(
@@ -296,7 +310,7 @@ impl Factory {
                 GpuData {
                     slice,
                     vertices,
-                    constants,
+                    instances,
                     pending: None,
                 },
             ),
@@ -316,9 +330,17 @@ impl Factory {
         template: &Mesh,
     ) -> Mesh {
         let mut hub = self.hub.lock().unwrap();
+        let instances = self.backend
+            .create_buffer(
+                1,
+                gfx::buffer::Role::Vertex,
+                gfx::memory::Usage::Data,
+                gfx::TRANSFER_DST,
+            )
+            .unwrap();
         let gpu_data = match hub.nodes[&template.node].sub_node {
             SubNode::Visual(_, ref gpu) => GpuData {
-                constants: self.backend.create_constant_buffer(1),
+                instances,
                 ..gpu.clone()
             },
             _ => unreachable!(),
@@ -340,9 +362,17 @@ impl Factory {
         material: M,
     ) -> Mesh {
         let mut hub = self.hub.lock().unwrap();
+        let instances = self.backend
+            .create_buffer(
+                1,
+                gfx::buffer::Role::Vertex,
+                gfx::memory::Usage::Data,
+                gfx::TRANSFER_DST,
+            )
+            .unwrap();
         let gpu_data = match hub.nodes[&template.node].sub_node {
             SubNode::Visual(_, ref gpu) => GpuData {
-                constants: self.backend.create_constant_buffer(1),
+                instances,
                 ..gpu.clone()
             },
             _ => unreachable!(),
@@ -357,12 +387,20 @@ impl Factory {
         &mut self,
         material: material::Sprite,
     ) -> Sprite {
+        let instances = self.backend
+            .create_buffer(
+                1,
+                gfx::buffer::Role::Vertex,
+                gfx::memory::Usage::Data,
+                gfx::TRANSFER_DST,
+            )
+            .unwrap();
         Sprite::new(self.hub.lock().unwrap().spawn_visual(
             material.into(),
             GpuData {
                 slice: gfx::Slice::new_match_vertex_buffer(&self.quad_buf),
                 vertices: self.quad_buf.clone(),
-                constants: self.backend.create_constant_buffer(1),
+                instances,
                 pending: None,
             },
         ))
@@ -853,14 +891,21 @@ impl Factory {
 
                 let (vbuf, slice) = self.backend
                     .create_vertex_buffer_with_slice(&vertices, &indices[..]);
-                let cbuf = self.backend.create_constant_buffer(1);
+                let instances = self.backend
+                    .create_buffer(
+                        1,
+                        gfx::buffer::Role::Vertex,
+                        gfx::memory::Usage::Data,
+                        gfx::TRANSFER_DST,
+                    )
+                    .unwrap();
                 let mut mesh = Mesh {
                     object: hub.spawn_visual(
                         material,
                         GpuData {
                             slice,
                             vertices: vbuf,
-                            constants: cbuf,
+                            instances,
                             pending: None,
                         },
                     ),

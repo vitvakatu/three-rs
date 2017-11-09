@@ -103,17 +103,11 @@ fn create_cubes(
 
 const COLORS: [three::Color; 6] = [0xffff80, 0x8080ff, 0x80ff80, 0xff8080, 0x80ffff, 0xff80ff];
 
-const SPEEDS: [f32; 6] = [
-    0.7,
-    -1.0,
-    1.3,
-    -1.6,
-    1.9,
-    -2.2,
-];
+const SPEEDS: [f32; 6] = [0.7, -1.0, 1.3, -1.6, 1.9, -2.2];
 
 fn main() {
-    let mut win = three::Window::new("Three-rs group example");    win.scene.background = three::Background::Color(0x204060);
+    let mut win = three::Window::new("Three-rs group example");
+    win.scene.background = three::Background::Color(0x204060);
 
     let mut cam = win.factory.perspective_camera(60.0, 1.0 .. 100.0);
     cam.look_at([-1.8, -8.0, 7.0], [0.0, 0.0, 3.5], None);
@@ -130,7 +124,10 @@ fn main() {
     let mut cubes = create_cubes(&mut win.factory, &materials, &levels);
     cubes[0].group.set_parent(&win.scene);
 
-    let font = win.factory.load_font(format!("{}/data/fonts/DejaVuSans.ttf", env!("CARGO_MANIFEST_DIR")));
+    let font = win.factory.load_font(format!(
+        "{}/data/fonts/DejaVuSans.ttf",
+        env!("CARGO_MANIFEST_DIR")
+    ));
     let mut fps_counter = win.factory.ui_text(&font, "FPS: 00");
 
     let timer = win.input.time();

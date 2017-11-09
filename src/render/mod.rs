@@ -30,10 +30,10 @@ use factory::Factory;
 use hub::{SubLight, SubNode};
 use light::{ShadowMap, ShadowProjection};
 use material::Material;
+use node::NodePointer;
 use scene::{Background, Scene};
 use text::Font;
 use texture::Texture;
-use node::NodePointer;
 
 /// The format of the back buffer color requested from the windowing system.
 pub type ColorFormat = gfx::format::Rgba8;
@@ -406,7 +406,13 @@ pub struct Renderer {
     debug_quads: froggy::Storage<DebugQuad>,
     size: (u32, u32),
     font_cache: HashMap<PathBuf, Font>,
-    instances_cache: HashMap<NodePointer, (gfx::handle::Buffer<back::Resources, Instance>, Vec<Matrix4<f32>>)>,
+    instances_cache: HashMap<
+        NodePointer,
+        (
+            gfx::handle::Buffer<back::Resources, Instance>,
+            Vec<Matrix4<f32>>,
+        ),
+    >,
     /// `ShadowType` of this `Renderer`.
     pub shadow: ShadowType,
 }
@@ -636,19 +642,25 @@ impl Renderer {
                     SubNode::Visual(_, ref data) => data,
                     _ => continue,
                 };
-                self.encoder.update_constant_buffer(
-                    &gpu_data.constants,
-                    &Locals {
-                        mx_world: Matrix4::from(node.world_transform).into(),
-                        color: [0.0; 4],
-                        mat_params: [0.0; 4],
-                        uv_range: [0.0; 4],
-                    },
+                let mx_world: [[f32; 4]; 4] = Matrix4::from(node.world_transform).into();
+                self.encoder.update_buffer(
+                    &gpu_data.instances,
+                    &[
+                        Instance {
+                            world0: mx_world[0],
+                            world1: mx_world[1],
+                            world2: mx_world[2],
+                            color: [0.0; 4],
+                            mat_params: [0.0; 4],
+                            uv_range: [0.0; 4],
+                        },
+                    ],
+                    0,
                 );
                 //TODO: avoid excessive cloning
                 let data = shadow_pipe::Data {
                     vbuf: gpu_data.vertices.clone(),
-                    cb_locals: gpu_data.constants.clone(),
+                    inst_buf: gpu_data.instances.clone(),
                     cb_globals: self.const_buf.clone(),
                     target: request.target.clone(),
                 };
@@ -714,12 +726,20 @@ impl Renderer {
             //TODO: batch per PSO
             match *material {
                 Material::Pbr(ref params) => {
-                    self.encoder.update_constant_buffer(
-                        &gpu_data.constants,
-                        &Locals {
-                            mx_world: Matrix4::from(node.world_transform).into(),
-                            ..unsafe { mem::zeroed() }
-                        },
+                    let mx_world: [[f32; 4]; 4] = Matrix4::from(node.world_transform).into();
+                    self.encoder.update_buffer(
+                        &gpu_data.instances,
+                        &[
+                            Instance {
+                                world0: mx_world[0],
+                                world1: mx_world[1],
+                                world2: mx_world[2],
+                                color: [0.0; 4],
+                                mat_params: [0.0; 4],
+                                uv_range: [0.0; 4],
+                            },
+                        ],
+                        0,
                     );
                     let mut pbr_flags = PbrFlags::empty();
                     if params.base_color_map.is_some() {
@@ -755,7 +775,7 @@ impl Renderer {
                     );
                     let data = pbr_pipe::Data {
                         vbuf: gpu_data.vertices.clone(),
-                        locals: gpu_data.constants.clone(),
+                        inst_buf: gpu_data.instances.clone(),
                         globals: self.const_buf.clone(),
                         lights: self.light_buf.clone(),
                         params: self.pbr_buf.clone(),
@@ -824,22 +844,28 @@ impl Renderer {
                         Some(ref map) => map.uv_range(),
                         None => [0.0; 4],
                     };
-                    self.encoder.update_constant_buffer(
-                        &gpu_data.constants,
-                        &Locals {
-                            mx_world: Matrix4::from(node.world_transform).into(),
-                            color: {
-                                let rgb = color::to_linear_rgb(color);
-                                [rgb[0], rgb[1], rgb[2], 0.0]
+                    let mx_world: [[f32; 4]; 4] = Matrix4::from(node.world_transform).into();
+                    self.encoder.update_buffer(
+                        &gpu_data.instances,
+                        &[
+                            Instance {
+                                world0: mx_world[0],
+                                world1: mx_world[1],
+                                world2: mx_world[2],
+                                color: {
+                                    let rgb = color::to_linear_rgb(color);
+                                    [rgb[0], rgb[1], rgb[2], 0.0]
+                                },
+                                mat_params: [param0, 0.0, 0.0, 0.0],
+                                uv_range,
                             },
-                            mat_params: [param0, 0.0, 0.0, 0.0],
-                            uv_range,
-                        },
+                        ],
+                        0,
                     );
                     //TODO: avoid excessive cloning
                     let data = basic_pipe::Data {
                         vbuf: gpu_data.vertices.clone(),
-                        cb_locals: gpu_data.constants.clone(),
+                        inst_buf: gpu_data.instances.clone(),
                         cb_lights: self.light_buf.clone(),
                         cb_globals: self.const_buf.clone(),
                         tex_map: map.unwrap_or(&self.map_default).to_param(),
