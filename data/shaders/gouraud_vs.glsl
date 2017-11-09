@@ -1,5 +1,4 @@
 #version 150 core
-#include <locals>
 #include <lights>
 #include <globals>
 
@@ -14,15 +13,23 @@ out vec4 v_LightEval[MAX_SHADOWS];
 flat out vec4 v_LightEvalFlat[MAX_SHADOWS];
 out vec4 v_ShadowCoord[MAX_SHADOWS];
 
+in vec4 a_World0;
+in vec4 a_World1;
+in vec4 a_World2;
+in vec4 a_MatParams;
+in vec4 a_Color;
+in vec4 a_UvRange;
+
 void main() {
-    vec4 world = u_World * a_Position;
-    vec3 normal = normalize(mat3(u_World) * a_Normal.xyz);
+    mat4 m_World = mat4(a_World0, a_World1, a_World2, vec4(0.0, 0.0, 0.0, 1.0));
+    vec4 world = m_World * a_Position;
+    vec3 normal = normalize(mat3(m_World) * a_Normal.xyz);
     for(int i=0; i<MAX_SHADOWS; ++i) {
         v_ShadowCoord[i] = vec4(0.0);
         v_LightEval[i] = v_LightEvalFlat[i] = vec4(0.0);
     }
     v_ResultColor = vec4(0.0);
-    v_Smooth = u_MatParams.x;
+    v_Smooth = a_MatParams.x;
 
     for(uint i=0U; i < min(MAX_LIGHTS, u_NumLights); ++i) {
         Light light = u_Lights[i];
@@ -34,8 +41,8 @@ void main() {
             irradiance = mix(light.color_back, light.color, dot_nl*0.5 + 0.5);
             dot_nl = 0.0;
         }
-        v_ResultColor += light.intensity.x * u_Color * irradiance; //ambient
-        vec4 color = light.intensity.y * max(0.0, dot_nl) * u_Color * light.color;
+        v_ResultColor += light.intensity.x * a_Color * irradiance; //ambient
+        vec4 color = light.intensity.y * max(0.0, dot_nl) * a_Color * light.color;
         // compute shadow coordinates
         int shadow_index = light.shadow_params[0];
         if (0 <= shadow_index && shadow_index < MAX_SHADOWS) {
