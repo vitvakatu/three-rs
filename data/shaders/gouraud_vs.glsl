@@ -16,12 +16,13 @@ out vec4 v_ShadowCoord[MAX_SHADOWS];
 in vec4 a_World0;
 in vec4 a_World1;
 in vec4 a_World2;
+in vec4 a_World3;
 in vec4 a_MatParams;
 in vec4 a_Color;
 in vec4 a_UvRange;
 
 void main() {
-    mat4 m_World = mat4(a_World0, a_World1, a_World2, vec4(0.0, 0.0, 0.0, 1.0));
+    mat4 m_World = mat4(a_World0, a_World1, a_World2, a_World3);
     vec4 world = m_World * a_Position;
     vec3 normal = normalize(mat3(m_World) * a_Normal.xyz);
     for(int i=0; i<MAX_SHADOWS; ++i) {

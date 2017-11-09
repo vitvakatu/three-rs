@@ -7,9 +7,8 @@ in vec3 v_Normal;
 in vec3 v_Half[MAX_LIGHTS];
 in vec4 v_ShadowCoord[MAX_LIGHTS];
 
-in vec4 a_MatParams;
-in vec4 a_Color;
-in vec4 a_UvRange;
+in vec4 v_MatParams;
+in vec4 v_Color;
 
 out vec4 Target0;
 
@@ -19,7 +18,7 @@ uniform sampler2DShadow t_Shadow1;
 void main() {
     vec4 color = vec4(0.0);
     vec3 normal = normalize(v_Normal);
-    float glossiness = a_MatParams.x;
+    float glossiness = v_MatParams.x;
     for(uint i=0U; i < min(MAX_LIGHTS, u_NumLights); ++i) {
         Light light = u_Lights[i];
         vec4 lit_space = v_ShadowCoord[i];
@@ -38,10 +37,10 @@ void main() {
         // hemisphere light test
         if (dot(light.color_back, light.color_back) > 0.0) {
             vec4 irradiance = mix(light.color_back, light.color, dot_nl*0.5 + 0.5);
-            color += shadow * light.intensity.x * a_Color * irradiance;
+            color += shadow * light.intensity.x * v_Color * irradiance;
         } else {
             float kd = light.intensity.x + light.intensity.y * max(0.0, dot_nl);
-            color += shadow * kd * a_Color * light.color;
+            color += shadow * kd * v_Color * light.color;
         }
         if (dot_nl > 0.0 && glossiness > 0.0) {
             float ks = dot(normal, normalize(v_Half[i]));

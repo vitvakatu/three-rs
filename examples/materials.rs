@@ -1,7 +1,9 @@
 extern crate three;
 
 fn main() {
-    let mut win = three::Window::new("Three-rs materials example");
+    let mut win = three::Window::builder("Three-rs group example")
+        .shader_directory("data/shaders")
+        .build();
     let mut cam = win.factory.perspective_camera(75.0, 1.0 .. 50.0);
     cam.set_position([0.0, 0.0, 10.0]);
 

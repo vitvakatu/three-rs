@@ -99,9 +99,10 @@ gfx_defines! {
         world0: [f32; 4] = "a_World0",
         world1: [f32; 4] = "a_World1",
         world2: [f32; 4] = "a_World2",
+        world3: [f32; 4] = "a_World3",
         color: [f32; 4] = "a_Color",
-        mat_params: [f32; 4] = "u_MatParams",
-        uv_range: [f32; 4] = "u_UvRange",
+        mat_params: [f32; 4] = "a_MatParams",
+        uv_range: [f32; 4] = "a_UvRange",
     }
 
     constant LightParam {
@@ -650,13 +651,14 @@ impl Renderer {
                             world0: mx_world[0],
                             world1: mx_world[1],
                             world2: mx_world[2],
+                            world3: mx_world[3],
                             color: [0.0; 4],
                             mat_params: [0.0; 4],
                             uv_range: [0.0; 4],
                         },
                     ],
                     0,
-                );
+                ).unwrap();
                 //TODO: avoid excessive cloning
                 let data = shadow_pipe::Data {
                     vbuf: gpu_data.vertices.clone(),
@@ -734,13 +736,14 @@ impl Renderer {
                                 world0: mx_world[0],
                                 world1: mx_world[1],
                                 world2: mx_world[2],
+                                world3: mx_world[3],
                                 color: [0.0; 4],
                                 mat_params: [0.0; 4],
                                 uv_range: [0.0; 4],
                             },
                         ],
                         0,
-                    );
+                    ).unwrap();
                     let mut pbr_flags = PbrFlags::empty();
                     if params.base_color_map.is_some() {
                         pbr_flags.insert(BASE_COLOR_MAP);
@@ -852,6 +855,7 @@ impl Renderer {
                                 world0: mx_world[0],
                                 world1: mx_world[1],
                                 world2: mx_world[2],
+                                world3: mx_world[3],
                                 color: {
                                     let rgb = color::to_linear_rgb(color);
                                     [rgb[0], rgb[1], rgb[2], 0.0]
@@ -861,7 +865,7 @@ impl Renderer {
                             },
                         ],
                         0,
-                    );
+                    ).unwrap();
                     //TODO: avoid excessive cloning
                     let data = basic_pipe::Data {
                         vbuf: gpu_data.vertices.clone(),

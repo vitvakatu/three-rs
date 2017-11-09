@@ -106,7 +106,9 @@ const COLORS: [three::Color; 6] = [0xffff80, 0x8080ff, 0x80ff80, 0xff8080, 0x80f
 const SPEEDS: [f32; 6] = [0.7, -1.0, 1.3, -1.6, 1.9, -2.2];
 
 fn main() {
-    let mut win = three::Window::new("Three-rs group example");
+    let mut win = three::Window::builder("Three-rs group example")
+        .shader_directory("data/shaders")
+        .build();
     win.scene.background = three::Background::Color(0x204060);
 
     let mut cam = win.factory.perspective_camera(60.0, 1.0 .. 100.0);

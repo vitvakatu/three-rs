@@ -239,17 +239,18 @@ impl Factory {
             .create_buffer(
                 1,
                 gfx::buffer::Role::Vertex,
-                gfx::memory::Usage::Data,
+                gfx::memory::Usage::Dynamic,
                 gfx::TRANSFER_DST,
             )
             .unwrap();
-        let (vbuf, slice) = if geometry.faces.is_empty() {
+        let (vbuf, mut slice) = if geometry.faces.is_empty() {
             self.backend.create_vertex_buffer_with_slice(&vertices, ())
         } else {
             let faces: &[u32] = gfx::memory::cast_slice(&geometry.faces);
             self.backend
                 .create_vertex_buffer_with_slice(&vertices, faces)
         };
+        slice.instances = Some((1, 0));
         Mesh {
             object: self.hub.lock().unwrap().spawn_visual(
                 material.into(),
@@ -275,7 +276,7 @@ impl Factory {
                 start: 0,
                 end: data.len() as u32,
                 base_vertex: 0,
-                instances: None,
+                instances: Some((1, 0)),
                 buffer: self.backend.create_index_buffer(data),
             }
         };
@@ -299,7 +300,7 @@ impl Factory {
             .create_buffer(
                 1,
                 gfx::buffer::Role::Vertex,
-                gfx::memory::Usage::Data,
+                gfx::memory::Usage::Dynamic,
                 gfx::TRANSFER_DST,
             )
             .unwrap();
@@ -334,7 +335,7 @@ impl Factory {
             .create_buffer(
                 1,
                 gfx::buffer::Role::Vertex,
-                gfx::memory::Usage::Data,
+                gfx::memory::Usage::Dynamic,
                 gfx::TRANSFER_DST,
             )
             .unwrap();
@@ -366,7 +367,7 @@ impl Factory {
             .create_buffer(
                 1,
                 gfx::buffer::Role::Vertex,
-                gfx::memory::Usage::Data,
+                gfx::memory::Usage::Dynamic,
                 gfx::TRANSFER_DST,
             )
             .unwrap();
@@ -391,14 +392,16 @@ impl Factory {
             .create_buffer(
                 1,
                 gfx::buffer::Role::Vertex,
-                gfx::memory::Usage::Data,
+                gfx::memory::Usage::Dynamic,
                 gfx::TRANSFER_DST,
             )
             .unwrap();
+        let mut slice = gfx::Slice::new_match_vertex_buffer(&self.quad_buf);
+        slice.instances = Some((1, 0));
         Sprite::new(self.hub.lock().unwrap().spawn_visual(
             material.into(),
             GpuData {
-                slice: gfx::Slice::new_match_vertex_buffer(&self.quad_buf),
+                slice,
                 vertices: self.quad_buf.clone(),
                 instances,
                 pending: None,
@@ -889,13 +892,14 @@ impl Factory {
                 };
                 info!("\t{:?}", material);
 
-                let (vbuf, slice) = self.backend
+                let (vbuf, mut slice) = self.backend
                     .create_vertex_buffer_with_slice(&vertices, &indices[..]);
+                slice.instances = Some((1, 0));
                 let instances = self.backend
                     .create_buffer(
                         1,
                         gfx::buffer::Role::Vertex,
-                        gfx::memory::Usage::Data,
+                        gfx::memory::Usage::Dynamic,
                         gfx::TRANSFER_DST,
                     )
                     .unwrap();

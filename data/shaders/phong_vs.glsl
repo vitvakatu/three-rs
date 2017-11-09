@@ -8,16 +8,18 @@ out vec3 v_World;
 out vec3 v_Normal;
 out vec3 v_Half[MAX_LIGHTS];
 out vec4 v_ShadowCoord[MAX_LIGHTS];
+out vec4 v_MatParams;
+out vec4 v_Color;
 
 in vec4 a_World0;
 in vec4 a_World1;
 in vec4 a_World2;
+in vec4 a_World3;
 in vec4 a_MatParams;
 in vec4 a_Color;
-in vec4 a_UvRange;
 
 void main() {
-    mat4 m_World = mat4(a_World0, a_World1, a_World2, vec4(0.0, 0.0, 0.0, 1.0));
+    mat4 m_World = mat4(a_World0, a_World1, a_World2, a_World3);
     vec4 world = m_World * a_Position;
     v_World = world.xyz;
     v_Normal = normalize(mat3(m_World) * a_Normal.xyz);
@@ -27,5 +29,7 @@ void main() {
         v_Half[i] = normalize(v_Normal + normalize(dir));
         v_ShadowCoord[i] = light.projection * world;
     }
+    v_Color = a_Color;
+    v_MatParams = a_MatParams;
     gl_Position = u_ViewProj * world;
 }

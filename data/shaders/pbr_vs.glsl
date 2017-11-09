@@ -36,13 +36,14 @@ out vec3 v_Normal;
 in vec4 a_World0;
 in vec4 a_World1;
 in vec4 a_World2;
+in vec4 a_World3;
 in vec4 a_MatParams;
 in vec4 a_Color;
 in vec4 a_UvRange;
 
 void main()
 {
-    mat4 m_World = mat4(a_World0, a_World1, a_World2, vec4(0.0, 0.0, 0.0, 1.0));
+    mat4 m_World = mat4(a_World0, a_World1, a_World2, a_World3);
     mat4 u_Model = m_World;
     mat4 u_Mvp = u_ViewProj * m_World;
 

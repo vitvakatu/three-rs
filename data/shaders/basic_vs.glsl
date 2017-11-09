@@ -5,14 +5,18 @@ in vec4 a_Position;
 in vec4 a_Normal;
 in vec2 a_TexCoord;
 out vec2 v_TexCoord;
+out vec4 v_Color;
 
 in vec4 a_World0;
 in vec4 a_World1;
 in vec4 a_World2;
+in vec4 a_World3;
+in vec4 a_Color;
 in vec4 a_UvRange;
 
 void main() {
-    mat4 m_World = mat4(a_World0, a_World1, a_World2, vec4(0.0, 0.0, 0.0, 1.0));
+    mat4 m_World = mat4(a_World0, a_World1, a_World2, a_World3);
     v_TexCoord = mix(a_UvRange.xy, a_UvRange.zw, a_TexCoord);
+    v_Color = a_Color;
     gl_Position = u_ViewProj * m_World * a_Position;
 }
