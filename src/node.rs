@@ -12,7 +12,7 @@ pub(crate) type TransformInternal = cgmath::Decomposed<cgmath::Vector3<f32>, cgm
 
 // Fat node of the scene graph.
 //
-// `Node` is used by `three-rs` internally,
+// `NodeInternal` is used by `three-rs` internally,
 // client code uses [`Object`](struct.Object.html) instead.
 #[derive(Debug)]
 pub(crate) struct NodeInternal {
@@ -67,6 +67,21 @@ pub struct Node {
     pub world_visible: bool,
     /// Material in case this `Node` has it.
     pub material: Option<Material>,
+}
+
+impl<'a> From<&'a NodeInternal> for Node {
+    fn from(node: &'a NodeInternal) -> Self {
+        Node {
+            transform: node.transform.into(),
+            world_transform: node.world_transform.into(),
+            visible: node.visible,
+            world_visible: node.world_visible,
+            material: match node.sub_node {
+                SubNode::Visual(ref mat, _) => Some(mat.clone()),
+                _ => None,
+            },
+        }
+    }
 }
 
 impl From<SubNode> for NodeInternal {
