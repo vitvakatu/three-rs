@@ -287,6 +287,9 @@ extern crate gfx_window_glutin;
 extern crate glutin;
 
 #[macro_use]
+extern crate nuklear_rust;
+
+#[macro_use]
 mod macros;
 
 pub mod audio;
@@ -298,6 +301,7 @@ pub mod custom;
 mod data;
 mod factory;
 pub mod geometry;
+pub mod gui;
 mod hub;
 mod input;
 pub mod light;

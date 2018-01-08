@@ -6,6 +6,7 @@ use gfx;
 use gfx::handle as h;
 use gfx::memory::Typed;
 use gfx::traits::{Device, Factory as Factory_, FactoryExt};
+use gfx::pso::buffer::Structure;
 #[cfg(feature = "opengl")]
 use gfx_device_gl as back;
 #[cfg(feature = "opengl")]
@@ -13,6 +14,8 @@ use gfx_window_glutin;
 #[cfg(feature = "opengl")]
 use glutin;
 use mint;
+use nuklear_rust as nk;
+use gui;
 
 pub mod source;
 mod pso_data;
@@ -20,6 +23,7 @@ mod pso_data;
 use color;
 
 use std::{io, str};
+use std::mem;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -98,6 +102,12 @@ gfx_defines! {
         tangent: [gfx::format::I8Norm; 4] = "a_Tangent",
     }
 
+    vertex GuiVertex {
+        pos: [f32; 2] = "Position",
+        tex: [f32; 2] = "TexCoord",
+        col: [gfx::format::U8Norm; 4] = "Color",
+    }
+
     vertex Instance {
         world0: [f32; 4] = "i_World0",
         world1: [f32; 4] = "i_World1",
@@ -164,6 +174,19 @@ gfx_defines! {
             gfx::preset::depth::LESS_EQUAL_TEST,
     }
 
+    constant GuiLocals {
+        proj: [[f32; 4]; 4] = "ProjMtx",
+    }
+
+    pipeline gui_pipe {
+        vbuf: gfx::VertexBuffer<GuiVertex> = (),
+        tex: gfx::TextureSampler<[f32; 4]> = "Texture",
+        out_color: gfx::BlendTarget<ColorFormat> =
+            ("Target0", gfx::state::MASK_ALL, gfx::preset::blend::ALPHA),
+        locals: gfx::ConstantBuffer<GuiLocals> = "Locals",
+        scissors: gfx::Scissor = (),
+    }
+
     constant PbrParams {
         base_color_factor: [f32; 4] = "u_BaseColorFactor",
         camera: [f32; 3] = "u_Camera",
@@ -196,6 +219,12 @@ gfx_defines! {
 
         color_target: gfx::RenderTarget<ColorFormat> = "Target0",
         depth_target: gfx::DepthTarget<DepthFormat> = gfx::preset::depth::LESS_EQUAL_WRITE,
+    }
+}
+
+impl Default for GuiVertex {
+    fn default() -> Self {
+        unsafe { mem::zeroed() }
     }
 }
 
@@ -311,6 +340,8 @@ pub struct PipelineStates {
 
     /// Used internally for rendering `Background::Skybox`.
     skybox: gfx::PipelineState<back::Resources, quad_pipe::Meta>,
+
+    gui: gfx::PipelineState<back::Resources, gui_pipe::Meta>,
 }
 
 impl PipelineStates {
@@ -335,6 +366,7 @@ impl PipelineStates {
         let quad = backend.create_shader_set(&src.quad.vs, &src.quad.ps)?;
         let pbr = backend.create_shader_set(&src.pbr.vs, &src.pbr.ps)?;
         let skybox = backend.create_shader_set(&src.skybox.vs, &src.skybox.ps)?;
+        let gui = backend.create_shader_set(&src.gui.vs, &src.gui.ps)?;
 
         let rast_quad = gfx::state::Rasterizer {
             samples: Some(gfx::state::MultiSample),
@@ -413,6 +445,12 @@ impl PipelineStates {
             rast_fill,
             pbr_pipe::new(),
         )?;
+        let pso_gui = backend.create_pipeline_state(
+            &gui,
+            gfx::Primitive::TriangleStrip,
+            rast_fill,
+            gui_pipe::new(),
+        )?;
 
         Ok(PipelineStates {
             mesh_basic_fill: pso_mesh_basic_fill,
@@ -425,6 +463,7 @@ impl PipelineStates {
             quad: pso_quad,
             pbr: pso_pbr,
             skybox: pso_skybox,
+            gui: pso_gui,
         })
     }
 
@@ -472,6 +511,16 @@ pub struct Renderer {
     instance_cache: HashMap<InstanceCacheKey, (InstanceData, Vec<Instance>)>,
     /// `ShadowType` of this `Renderer`.
     pub shadow: ShadowType,
+    // GUI
+    ctx: gui::GuiContext,
+    cmd: nk::NkBuffer,
+    textures: Vec<Texture<[f32; 4]>>,
+    vbf: h::Buffer<back::Resources, GuiVertex>,
+    ebf: h::Buffer<back::Resources, u16>,
+    lbf: h::Buffer<back::Resources, GuiLocals>,
+    vsz: usize,
+    esz: usize,
+    vle: nk::NkDrawVertexLayoutElements,
 }
 
 impl Renderer {
@@ -510,6 +559,61 @@ impl Renderer {
             )
             .unwrap();
         let pso = PipelineStates::init(source, &mut gl_factory).unwrap();
+
+        let mut allocator = nk::NkAllocator::new_vec();
+        let mut font_atlas = nk::NkFontAtlas::new(&mut allocator);
+
+        let mut cfg = nk::NkFontConfig::with_size(28.0);
+        cfg.set_oversample_h(3);
+        cfg.set_oversample_v(2);
+        cfg.set_glyph_range(nk::font_cyrillic_glyph_ranges());
+        cfg.set_ttf(include_bytes!("../../data/fonts/DejaVuSans.ttf"));
+        font_atlas.begin();
+        let font = font_atlas.add_font_with_config(&cfg).unwrap();
+
+        let ctx = nk::NkContext::new(&mut allocator, &font.handle());
+
+        let mut cfg = nk::NkConvertConfig::default();
+        let mut null = nk::NkDrawNullTexture::default();
+        //cfg.set_null(null.clone());
+        cfg.set_circle_segment_count(22);
+        cfg.set_curve_segment_count(22);
+        cfg.set_arc_segment_count(22);
+        cfg.set_global_alpha(1.0);
+        cfg.set_shape_aa(nk::NkAntiAliasing::NK_ANTI_ALIASING_ON);
+        cfg.set_line_aa(nk::NkAntiAliasing::NK_ANTI_ALIASING_ON);
+
+        let mut gui_ctx = gui::GuiContext {
+            ctx,
+            allocator,
+            cfg,
+            font,
+            font_atlas,
+        };
+
+        println!("Font count: {}", gui_ctx.font_atlas.fonts().len());
+
+        let mut textures = Vec::new();
+        let font_tex = {
+            let (buf, width, height) = gui_ctx.font_atlas.bake(nk::NkFontAtlasFormat::NK_FONT_ATLAS_RGBA32);
+            println!("Font_texture: {} {} {}", buf.len(), width, height);
+            use image;
+            image::save_buffer("/home/fumlead/projects/three-rs/test.png", buf, width, height, image::ColorType::RGBA(8)).unwrap();
+            use gfx::texture as t;
+            let kind = t::Kind::D2(width as u16, height as u16, t::AaMode::Single);
+            let (_, view) = gl_factory
+                .create_texture_immutable_u8::<gfx::format::Rgba8>(kind, &[buf])
+                .unwrap_or_else(|e| {
+                    panic!("Unable to create GPU texture from memory: {:?}", e);
+                });
+            let texture = Texture::new(view, sampler.clone(), [width as u32, height as u32]);
+            textures.push(texture);
+            nk::NkHandle::from_id(textures.len() as i32)
+        };
+        //gui_ctx.font_atlas.end(font_tex, Some(&mut null));
+        gui_ctx.font_atlas.end(font_tex, None);
+
+        let cmd = gui_ctx.get_cmd();
         let renderer = Renderer {
             device,
             factory: gl_factory.clone(),
@@ -529,9 +633,38 @@ impl Renderer {
             debug_quads: froggy::Storage::new(),
             font_cache: HashMap::new(),
             size: window.get_inner_size_pixels().unwrap(),
+            // GUI
+            ctx: gui_ctx,
+            cmd,
+            textures,
+            vbf: gl_factory.create_upload_buffer::<GuiVertex>(512 * 1024).unwrap(),
+            ebf: gl_factory.create_upload_buffer::<u16>(128 * 1024).unwrap(),
+            vsz: 512 * 1024,
+            esz: 128 * 1024,
+            lbf: gl_factory.create_constant_buffer::<GuiLocals>(1),
+            vle: nk::NkDrawVertexLayoutElements::new(&[
+                (nk::NkDrawVertexLayoutAttribute::NK_VERTEX_POSITION, nk::NkDrawVertexLayoutFormat::NK_FORMAT_FLOAT, GuiVertex::query("Position").unwrap().offset),
+                (nk::NkDrawVertexLayoutAttribute::NK_VERTEX_TEXCOORD, nk::NkDrawVertexLayoutFormat::NK_FORMAT_FLOAT, GuiVertex::query("TexCoord").unwrap().offset),
+                (nk::NkDrawVertexLayoutAttribute::NK_VERTEX_COLOR, nk::NkDrawVertexLayoutFormat::NK_FORMAT_R8G8B8A8, GuiVertex::query("Color").unwrap().offset),
+                (nk::NkDrawVertexLayoutAttribute::NK_VERTEX_ATTRIBUTE_COUNT, nk::NkDrawVertexLayoutFormat::NK_FORMAT_COUNT, 0u32)
+            ]),
         };
         let factory = Factory::new(gl_factory);
         (renderer, window, factory)
+    }
+
+    pub fn add_texture(&mut self, texture: Texture<[f32; 4]>) -> nk::NkHandle {
+        self.textures.push(texture);
+        nk::NkHandle::from_id(self.textures.len() as i32)
+    }
+
+    fn find_texture(&self, id: i32) -> Option<Texture<[f32; 4]>> {
+        let mut ret = None;
+
+        if id > 0 && id as usize <= self.textures.len() {
+            ret = Some(self.textures[(id - 1) as usize].clone())
+        }
+        ret
     }
 
     /// Reloads the shaders.
@@ -586,6 +719,7 @@ impl Renderer {
         let mut hub = scene.hub.lock().unwrap();
         hub.process_messages();
         self.device.cleanup();
+        self.ctx.ctx.clear();
 
         // update dynamic meshes
         // Note: mutable node access here
@@ -964,6 +1098,105 @@ impl Renderer {
                 depth_target: self.out_depth.clone(),
             };
             self.encoder.draw(&quad_slice, &self.pso.quad, &data);
+        }
+
+        //GUI
+        self.ctx.ctx.style_set_font(&self.ctx.font.handle());
+        if self.ctx.ctx.begin(nk_string!("Nuklear with Three-rs"),
+            nk::NkRect {
+                x: 100.0,
+                y: 100.0,
+                w: 300.0,
+                h: 300.0,
+            },
+            nk::NkPanelFlags::NK_WINDOW_BORDER as nk::NkFlags | nk::NkPanelFlags::NK_WINDOW_TITLE as nk::NkFlags) {
+            //self.ctx.ctx.layout_row_dynamic(20.0, 1);
+            //self.ctx.ctx.text("Nuklear and Three-rs", nk::NkTextAlignment::NK_TEXT_LEFT as nk::NkFlags);
+            self.ctx.ctx.end();
+        }
+
+        let width = self.size.0;
+        let height = self.size.1;
+        let scale = nk::NkVec2 {
+            x: 1.0,
+            y: 1.0,
+        };
+        use gfx::IntoIndexBuffer;
+        let ortho = [[2.0f32 / width as f32, 0.0f32, 0.0f32, 0.0f32],
+            [0.0f32, -2.0f32 / height as f32, 0.0f32, 0.0f32],
+            [0.0f32, 0.0f32, -1.0f32, 0.0f32],
+            [-1.0f32, 1.0f32, 0.0f32, 1.0f32]];
+
+        self.ctx.cfg.set_vertex_layout(&self.vle);
+        self.ctx.cfg.set_vertex_size(mem::size_of::<GuiVertex>());
+        {
+            let mut rwv = self.factory.write_mapping(&mut self.vbf).unwrap();
+            let mut rvbuf = unsafe {
+                ::std::slice::from_raw_parts_mut(&mut *rwv as *mut [GuiVertex] as *mut u8,
+                                                 ::std::mem::size_of::<GuiVertex>() * self.vsz)
+            };
+            let mut vbuf = nk::NkBuffer::with_fixed(&mut rvbuf);
+
+            let mut rwe = self.factory.write_mapping(&mut self.ebf).unwrap();
+            let mut rebuf = unsafe {
+                ::std::slice::from_raw_parts_mut(&mut *rwe as *mut [u16] as *mut u8,
+                                                 ::std::mem::size_of::<u16>() * self.esz)
+            };
+            let mut ebuf = nk::NkBuffer::with_fixed(&mut rebuf);
+
+            self.ctx.ctx.convert(&mut self.cmd, &mut vbuf, &mut ebuf, &self.ctx.cfg);
+        }
+        let mut slice = ::gfx::Slice {
+            start: 0,
+            end: 0,
+            base_vertex: 0,
+            instances: None,
+            buffer: self.ebf.clone().into_index_buffer(&mut self.factory),
+        };
+
+        self.encoder.update_constant_buffer(&mut self.lbf, &GuiLocals { proj: ortho });
+
+        for (i, cmd) in self.ctx.ctx.draw_command_iterator(&self.cmd).into_iter().enumerate() {
+            println!("Command #{}: elements: {} texture: {}", i, cmd.elem_count(), cmd.texture().id().unwrap());
+            if cmd.elem_count() < 1 {
+                continue;
+            }
+
+            slice.end = slice.start + cmd.elem_count();
+
+            let id = cmd.texture().id().unwrap();
+
+            let x = cmd.clip_rect().x * scale.x;
+            let y = cmd.clip_rect().y * scale.y;
+            let w = cmd.clip_rect().w * scale.x;
+            let h = cmd.clip_rect().h * scale.y;
+
+            let sc_rect = gfx::Rect {
+                x: (if x < 0f32 { 0f32 } else { x }) as u16,
+                y: (if y < 0f32 { 0f32 } else { y }) as u16,
+                w: (if x < 0f32 { w + x } else { w }) as u16,
+                h: (if y < 0f32 { h + y } else { h }) as u16,
+            };
+
+            let res = if id > 0 && (id as usize) <= self.textures.len() {
+                self.textures[(id - 1) as usize].clone()
+            } else {
+                println!("Miss {}!", id);
+                self.textures[0].clone()
+                //self.map_default.clone()
+            };
+
+            let data = gui_pipe::Data {
+                vbuf: self.vbf.clone(),
+                tex: res.to_param(),
+                out_color: self.out_color.clone(),
+                scissors: sc_rect,
+                locals: self.lbf.clone(),
+            };
+
+            self.encoder.draw(&slice, &self.pso.gui, &data);
+
+            slice.start = slice.end;
         }
 
         self.encoder.flush(&mut self.device);

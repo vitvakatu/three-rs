@@ -133,4 +133,5 @@ decl_shaders! {
     (shadow, shadow, Shadow),
     (skybox, skybox, Skybox),
     (sprite, sprite, Sprite),
+    (gui, GUI, Gui),
 }
